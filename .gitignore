@@ -1,0 +1,18 @@
+# Temporary files
+*~
+._*
+*.dSYM
+*.swp
+
+# Compilation files
+/objs/
+
+# Target files
+/mdriver
+/mdriver-dbg
+/mdriver-emulate
+/.selected_course.txt
+
+# Doxygen files
+/doc/
+/doxygen.warn
