@@ -5,7 +5,7 @@
  * 15-213: Introduction to Computer Systems
  *
  * TODO: insert your documentation here. :)
- *
+ * Version 0.0.1: Implicit Free List
  *************************************************************************
  *
  * ADVICE FOR STUDENTS.
@@ -16,7 +16,7 @@
  *
  *************************************************************************
  *
- * @author Your Name <andrewid@andrew.cmu.edu>
+ * @author Xianwei Zou <xianweiz@andrew.cmu.edu>
  */
 
 #include <assert.h>
@@ -74,7 +74,7 @@
 
 /* Basic constants */
 
-typedef uint64_t word_t;
+typedef uint64_t word_t; // word_t is just unsigned long: 8 bytes
 
 /** @brief Word and header size (bytes) */
 static const size_t wsize = sizeof(word_t);
@@ -87,17 +87,24 @@ static const size_t min_block_size = 2 * dsize;
 
 /**
  * TODO: explain what chunksize is
+ *      Ans: Everytime extends heap by this amount
  * (Must be divisible by dsize)
  */
 static const size_t chunksize = (1 << 12);
 
 /**
  * TODO: explain what alloc_mask is
+ *      Ans: Get the allocted flag byte from the header/footer
+ *      (unsigned long) 0x1 = 0x 0000 0000 0000 0001
+ *          alloc = header & alloc_mask
  */
 static const word_t alloc_mask = 0x1;
 
 /**
  * TODO: explain what size_mask is
+ *      Ans: Get the size bytes from the header/footer
+ *      (unsigned long) ~0xF = 0x FFFF FFFF FFFF FFF0
+ *          size = header & size_mask
  */
 static const word_t size_mask = ~(word_t)0xF;
 
@@ -427,6 +434,44 @@ static block_t *coalesce_block(block_t *block) {
      * at the malloc code in CS:APP and K&R, which make heavy use of macros
      * and which we no longer consider to be good style.
      */
+
+    block_t* pre_block = find_prev(block);  // get previous block address
+    block_t* next_block = find_next(block); // get next block address
+    bool pre_alloc = get_alloc(pre_block); // get previous block alloc bit
+    bool next_alloc = get_alloc(next_block); // get next block alloc bit
+    size_t cur_size = get_size(block); // size of the current block
+
+    /* Case 1: allocated + free + allocated */
+    if (pre_alloc && next_alloc) {
+        // nothing to coalsece, just return the current block
+        return block;
+    }
+    /* Case 2: allocated + free + free */
+    else if (pre_alloc && (!next_alloc)) {
+        // To merge current free block with next free block
+        // Change the header and footer (size) of current block
+        cur_size = cur_size + get_size(next_block); // get the new size
+        write_block(block, cur_size, false);
+    }
+    /* Case 3: free + free + allocated */
+    else if ((!pre_alloc) && (next_alloc)) {
+        // To merge the current free block with the pre free block
+        cur_size = cur_size + get_size(pre_block); // get the new size
+        // Change the header and footer (size) of the previous block
+        write_block(pre_block, cur_size, false);
+        // Change the pointer to previous block
+        block = pre_block;
+    }
+    /* Case 4: free + free + free */
+    else {
+        // To merge the current free block with the pre free block
+        cur_size = cur_size + get_size(pre_block) + get_size(next_block);
+        // Change the header and footer of the previous block
+        write_block(pre_alloc, cur_size, false);
+        // Change the pointer to the previous block
+        block = pre_block;
+    }
+
     return block;
 }
 
