@@ -491,6 +491,39 @@ static void free_list_insert(block_t *block) {
 }
 
 /**
+ * @brief delete a free block from its bucket list
+ * @pre block is not NULL, block is free
+ */
+static void free_list_delete(block_t* block) {
+    dbg_requires(block != NULL);     // check NULL
+    dbg_requires(!get_alloc(block)); // check free
+
+    // Find this free block is in which bucket free list
+    size_t index = find_seg_list(get_size(block));
+
+    // This bucket free list cannot be an empty list
+    dbg_assert(bucket_list[index] != NULL);
+    // When this bucket list only has this one block
+    if ((bucket_list[index]->next == block) && (bucket_list[index]->prev == block)) {
+        bucket_list[index] = NULL;
+    }
+    // When this bucket list has many blocks
+    // and this block is the head block
+    else if (block == bucket_list[index]) {
+        block->next->prev = block->prev;
+        block->prev->next = block->next;
+        // set new head
+        bucket_list[index] = block;
+    }
+    // When this bucket list has many blocks
+    // and this block is not the head block
+    else {
+        block->next->prev = block->prev;
+        block->prev->next = block->next;
+    }
+}
+
+/**
  * @brief
  *
  * <What does this function do?>
