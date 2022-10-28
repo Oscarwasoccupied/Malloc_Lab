@@ -131,7 +131,13 @@ typedef struct block {
      * should use a union to alias this zero-length array with another struct,
      * in order to store additional types of data in the payload memory.
      */
-    char payload[0];
+    union {
+        struct node {
+            struct block *next;
+            struct block *prev;
+        } node_t;
+        char payload[0];
+    };
 
     /*
      * TODO: delete or replace this comment once you've thought about it.
@@ -509,15 +515,8 @@ static block_t *extend_heap(size_t size) {
         return NULL;
     }
 
-    /*
-     * TODO: delete or replace this comment once you've thought about it.
-     * Think about what bp represents. Why do we write the new block
-     * starting one word BEFORE bp, but with the same size that we
-     * originally requested?
-     */
-
     // Initialize free block header/footer
-    block_t *block = payload_to_header(bp);
+    block_t *block = payload_to_header(bp); // to cover the old epilogue
     write_block(block, size, false);
 
     // Create new epilogue header
@@ -593,19 +592,64 @@ static block_t *find_fit(size_t asize) {
  * @return
  */
 bool mm_checkheap(int line) {
-    /*
-     * TODO: Delete this comment!
-     *
-     * You will need to write the heap checker yourself.
-     * Please keep modularity in mind when you're writing the heap checker!
-     *
-     * As a filler: one guacamole is equal to 6.02214086 x 10**23 guacas.
-     * One might even call it...  the avocado's number.
-     *
-     * Internal use only: If you mix guacamole on your bibimbap,
-     * do you eat it with a pair of chopsticks, or with a spoon?
-     */
-    
+    dbg_printf("\n[line %d] Checking...\n", line);
+    // Check for epilogue and prologue blocks
+    size_t prologue_size = get_size(mem_heap_lo());
+    size_t epilogue_size = get_size(mem_heap_hi() - 7L);
+    // if one of the size is not 0
+    if (prologue_size || epilogue_size) {
+        dbg_printf("[line %d]: Epilogue or prologue size not equal to 0.\n",
+                   line);
+        return false;
+    }
+    int heap_free_count = 0;
+    // int list_free_count = 0;
+    block_t *block;
+    for (block = heap_start; get_size(block) > 0; block = find_next(block)) {
+        // Check each block's header and footer matching
+        if (get_size(block) != extract_size(*header_to_footer(block))) {
+            dbg_printf("[line %d]: Block %p header and footer displays "
+                       "different block size.\n",
+                       line, block);
+            return false;
+        }
+        if (get_alloc(block) != extract_alloc(*header_to_footer(block))) {
+            dbg_printf("[line %d]: Block %p header and footer displays "
+                       "different alloc flag.\n",
+                       line, block);
+            return false;
+        }
+        // Check each block's address alignment
+        if (get_size(block) % dsize != 0) {
+            dbg_printf("[line %d]: Block size %lu not aligned.\n", line,
+                       get_size(block));
+            return false;
+        }
+        // Check blocks lie within heap boundaries
+        if (block < (block_t *)mem_heap_lo() ||
+            block > (block_t *)(mem_heap_hi() - 7L)) {
+            dbg_printf("[line: %d]: Block %p is out of the bound", line,
+                       (void *)block);
+            return false;
+        }
+        // Check block size
+        if (get_size(block) < min_block_size) {
+            dbg_printf(
+                "[line: %d]: Block %p is smaller than the min_block_size %lu",
+                line, (void *)block, min_block_size);
+            return false;
+        }
+        // Check coalescing: no consecutive free blocks in the heap
+        if (!get_alloc(block) && !get_alloc(find_next(block))) {
+            dbg_printf("[line: %d]: Two consecutive free blocks: %p and %p",
+                       line, (void *)block, (void *)find_next(block));
+            return false;
+        }
+        // count free blocks by iterating through every block
+        if (!get_alloc(block)) {
+            heap_free_count++;
+        }
+    }
     return true;
 }
 
