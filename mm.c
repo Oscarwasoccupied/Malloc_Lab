@@ -85,6 +85,8 @@ static const size_t dsize = 2 * wsize;
 /** @brief Minimum block size (bytes) */
 static const size_t min_block_size = 2 * dsize;
 
+/** @brief number of seg list buckets */
+static const size_t num_buckets = 15;
 /**
  * TODO: explain what chunksize is
  *      Ans: Everytime extends heap by this amount
@@ -132,10 +134,10 @@ typedef struct block {
      * in order to store additional types of data in the payload memory.
      */
     union {
-        struct node {
+        struct{
             struct block *next;
             struct block *prev;
-        } node_t;
+        };
         char payload[0];
     };
 
@@ -151,6 +153,9 @@ typedef struct block {
 
 /** @brief Pointer to first block in the heap */
 static block_t *heap_start = NULL;
+
+/** @brief Point to the free block list **/
+static block_t *bucket_list[num_buckets];
 
 /*
  *****************************************************************************
@@ -411,6 +416,41 @@ static block_t *find_prev(block_t *block) {
  */
 
 /******** The remaining content below are helper and debug routines ********/
+
+/**
+ * @brief Insert a free block into corresponding free bucket list according to
+ * the free block size using LIFO strategy.
+ * @return void
+ * @pre block is not NULL, block is marked as free
+ */
+static void free_list_insert(block_t* block) {
+    dbg_requires(block != NULL); // check NULL
+    dbg_requires(!get_alloc(block)); // check free
+
+    /******** TODO ******/
+    /** implement find_bucket_list function*/
+    // Find a suitable bucket list for this free block
+    size_t index = find_seg_list(get_size(block));
+
+    // When the bucket find is empty, initialize the bucket with current block
+    if (bucket_list[index] == NULL) {
+        block->next = block;
+        block->prev = block;
+        bucket_list[index] = block;
+        return true;
+    }
+
+    // When the bucket is no empty, insert the free block
+    block_t* tail = bucket_list[index]->prev;
+    block->next = bucket_list[index];
+    block->prev = tail;
+    tail->next = block;
+    bucket_list[index]->prev = block;
+
+    // Update head
+    bucket_list[index] = block;
+
+}
 
 /**
  * @brief
