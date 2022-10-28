@@ -435,11 +435,25 @@ static block_t *coalesce_block(block_t *block) {
      * and which we no longer consider to be good style.
      */
 
-    block_t* pre_block = find_prev(block);  // get previous block address
-    block_t* next_block = find_next(block); // get next block address
-    bool pre_alloc = get_alloc(pre_block); // get previous block alloc bit
-    bool next_alloc = get_alloc(next_block); // get next block alloc bit
-    size_t cur_size = get_size(block); // size of the current block
+    block_t *pre_block = find_prev(block);  // get previous block address
+    block_t *next_block = find_next(block); // get next block address
+    bool next_alloc;                        // get next block alloc bit
+    bool pre_alloc;                         // get previous block alloc bit
+    size_t cur_size = get_size(block);      // get the size of the current block
+
+    // Know whether the next block or the previous block is allocated or not
+    // if the previous block is prologue
+    if (pre_block == NULL) {
+        pre_alloc = true;
+    } else {
+        pre_alloc = get_alloc(pre_block);
+    }
+    // if the next block is epilogue
+    if (next_block == (heap_start + mem_heapsize())) {
+        next_alloc = true;
+    } else {
+        next_alloc = get_alloc(next_block);
+    }
 
     /* Case 1: allocated + free + allocated */
     if (pre_alloc && next_alloc) {
@@ -464,10 +478,10 @@ static block_t *coalesce_block(block_t *block) {
     }
     /* Case 4: free + free + free */
     else {
-        // To merge the current free block with the pre free block
+        // To merge the current free block with the pre and nextfree block
         cur_size = cur_size + get_size(pre_block) + get_size(next_block);
         // Change the header and footer of the previous block
-        write_block(pre_alloc, cur_size, false);
+        write_block(pre_block, cur_size, false);
         // Change the pointer to the previous block
         block = pre_block;
     }
@@ -591,7 +605,7 @@ bool mm_checkheap(int line) {
      * Internal use only: If you mix guacamole on your bibimbap,
      * do you eat it with a pair of chopsticks, or with a spoon?
      */
-
+    
     return true;
 }
 
