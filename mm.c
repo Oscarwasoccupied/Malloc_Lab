@@ -87,6 +87,13 @@ static const size_t min_block_size = 2 * dsize;
 
 /** @brief number of seg list buckets */
 static const size_t num_buckets = 15;
+
+/** @brief 2^min_bucket_pow is the upper bound for size
+ *      of the first bucket.
+ * range = (2^(index+min_bucket_pow-1)-1, 2^(index+min_bucket_pow))
+ */
+static const size_t min_bucket_pow = 4;
+
 /**
  * TODO: explain what chunksize is
  *      Ans: Everytime extends heap by this amount
@@ -134,7 +141,7 @@ typedef struct block {
      * in order to store additional types of data in the payload memory.
      */
     union {
-        struct{
+        struct {
             struct block *next;
             struct block *prev;
         };
@@ -383,6 +390,40 @@ static word_t *find_prev_footer(block_t *block) {
 }
 
 /**
+ * @brief find the suitable segregated free list according to the size
+ * of the free block
+ *  range = 2^(index+4-1)+1 ~ 2^(index+4)
+ *  seg index        list block size range
+ *      0                   9 ~ 16
+ *      1                  17 ~ 32
+ *      2                  33 ~ 64
+ *      3                  65 ~ 128
+ *      4                 129 ~ 256
+ *      5                 257 ~ 512
+ *      6                 513 ~ 1024
+ *      7                1025 ~ 2048
+ *      8                2049 ~ 4096
+ *      9                4097 ~ 8192
+ *      10               8193 ~ 16,384
+ *      11             16,385 ~ 32,768
+ *      12             32,769 ~ 65,536
+ *      13             65,537 ~ 131,072
+ *      14                  >= 131,073
+ * @pre size of the free block must be larger than the mini_block_size
+ */
+static size_t find_seg_list(size_t asize) {
+    dbg_requires(asize >= min_block_size); // check size
+
+    for (size_t i = 0; i < num_buckets - 1; i++) {
+        if (asize <= (1 << (i + min_bucket_pow))) {
+            return i;
+        }
+    }
+    // when size is even larger than 2^18 = 131,073
+    return num_buckets - 1;
+}
+
+/**
  * @brief Finds the previous consecutive block on the heap.
  *
  * This is the previous block in the "implicit list" of the heap.
@@ -423,12 +464,10 @@ static block_t *find_prev(block_t *block) {
  * @return void
  * @pre block is not NULL, block is marked as free
  */
-static void free_list_insert(block_t* block) {
-    dbg_requires(block != NULL); // check NULL
+static void free_list_insert(block_t *block) {
+    dbg_requires(block != NULL);     // check NULL
     dbg_requires(!get_alloc(block)); // check free
 
-    /******** TODO ******/
-    /** implement find_bucket_list function*/
     // Find a suitable bucket list for this free block
     size_t index = find_seg_list(get_size(block));
 
@@ -437,11 +476,11 @@ static void free_list_insert(block_t* block) {
         block->next = block;
         block->prev = block;
         bucket_list[index] = block;
-        return true;
+        return;
     }
 
     // When the bucket is no empty, insert the free block
-    block_t* tail = bucket_list[index]->prev;
+    block_t *tail = bucket_list[index]->prev;
     block->next = bucket_list[index];
     block->prev = tail;
     tail->next = block;
@@ -449,7 +488,6 @@ static void free_list_insert(block_t* block) {
 
     // Update head
     bucket_list[index] = block;
-
 }
 
 /**
