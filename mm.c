@@ -481,8 +481,8 @@ static void free_list_insert(block_t *block) {
     dbg_requires(!get_alloc(block)); // check free
 
     // Find a suitable bucket list for this free block
-    // size_t index = find_seg_list(get_size(block));
-    size_t index = 0;
+    size_t index = find_seg_list(get_size(block));
+    // size_t index = 0;
 
     // When the bucket find is empty, initialize the bucket with current block
     if (bucket_list[index] == NULL) {
@@ -512,8 +512,8 @@ static void free_list_delete(block_t *block) {
     dbg_requires(!get_alloc(block)); // check free
 
     // Find this free block is in which bucket free list
-    // size_t index = find_seg_list(get_size(block));
-    size_t index = 0;
+    size_t index = find_seg_list(get_size(block));
+    // size_t index = 0;
 
     // This bucket free list cannot be an empty list
     dbg_assert(bucket_list[index] != NULL);
@@ -711,19 +711,34 @@ static block_t *find_fit(size_t asize) {
 
     // first fit
     // find which seg list this size of block belongs to
-    // size_t index = find_seg_list(asize);
-    size_t index = 0;
+    size_t index = find_seg_list(asize);
 
-    block = bucket_list[index];
-    if (block == NULL) {
-        return NULL;
-    }
-    do {
-        if (asize <= get_size(block)) {
-            return block;
+    // block = bucket_list[0];
+    // if (block == NULL) {
+    //     return NULL;
+    // }
+    // do {
+    //     if (asize <= get_size(block)) {
+    //         return block;
+    //     }
+    //     block = block->next;
+    // } while (block != bucket_list[0]);
+
+    // search from the #index bucket
+    for (size_t i = index; i < num_buckets; i++) {
+        block = bucket_list[i];
+        // check if this bucket is empty
+        if (block == NULL) {
+            continue;
         }
-        block = block->next;
-    } while (block != bucket_list[index]);
+
+        do {
+            if ((asize <= get_size(block))) {
+                return block;
+            }
+            block = block->next;
+        } while (block != bucket_list[i]);
+    }
 
     return NULL;
 }
