@@ -459,6 +459,18 @@ static block_t *find_prev(block_t *block) {
 /******** The remaining content below are helper and debug routines ********/
 
 /**
+ * @brief print address and size for each bloch in the heap
+ */
+static void print_heap() {
+    dbg_printf("Heap Start here\n");
+    for (block_t *block = heap_start; block < (heap_start + mem_heapsize());
+         block = find_next(block)) {
+        dbg_printf("block start at %p, size %ld \n", block, get_size(block));
+    }
+    dbg_printf("Heap End here\n");
+}
+
+/**
  * @brief Insert a free block into corresponding free bucket list according to
  * the free block size using LIFO strategy.
  * @return void
@@ -508,15 +520,17 @@ static void free_list_delete(block_t *block) {
     // When this bucket list only has one block
     if ((block->next == block) && (block->prev == block)) {
         bucket_list[index] = NULL;
-        return;
     }
     // When this bucket list has many blocks
-    block->next->prev = block->prev;
-    block->prev->next = block->next;
     // and this block is the head block
-    if (block == bucket_list[index]) {
+    else if (block == bucket_list[index]) {
+        block->next->prev = block->prev;
+        block->prev->next = block->next;
         // set new head
         bucket_list[index] = block->next;
+    } else {
+        block->next->prev = block->prev;
+        block->prev->next = block->next;
     }
 }
 
@@ -564,8 +578,12 @@ static block_t *coalesce_block(block_t *block) {
     }
     // if the next block is epilogue
     if (next_block == (heap_start + mem_heapsize())) {
+        // print_heap();
+        // dbg_requires(mm_checkheap(__LINE__));
         next_alloc = true;
     } else {
+        // print_heap();
+        // dbg_requires(mm_checkheap(__LINE__));
         next_alloc = get_alloc(next_block);
     }
 
@@ -692,23 +710,20 @@ static block_t *find_fit(size_t asize) {
     block_t *block;
 
     // first fit
-    // for (block = heap_start; get_size(block) > 0; block = find_next(block)) {
-
-    //     if (!(get_alloc(block)) && (asize <= get_size(block))) {
-    //         return block;
-    //     }
-    // }
-    // return NULL; // no fit found
-
     // find which seg list this size of block belongs to
     // size_t index = find_seg_list(asize);
     size_t index = 0;
-    for (block = bucket_list[index]; block != bucket_list[index]->prev;
-         block = block->next) {
-        if ((asize <= get_size(block))) {
+
+    block = bucket_list[index];
+    if (block == NULL) {
+        return NULL;
+    }
+    do {
+        if (asize <= get_size(block)) {
             return block;
         }
-    }
+        block = block->next;
+    } while (block != bucket_list[index]);
 
     return NULL;
 }
@@ -761,20 +776,20 @@ bool mm_checkheap(int line) {
         // Check blocks lie within heap boundaries
         if (block < (block_t *)mem_heap_lo() ||
             block > (block_t *)(mem_heap_hi() - 7L)) {
-            dbg_printf("[line: %d]: Block %p is out of the bound", line,
+            dbg_printf("[line: %d]: Block %p is out of the bound\n", line,
                        (void *)block);
             return false;
         }
         // Check block size
         if (get_size(block) < min_block_size) {
             dbg_printf(
-                "[line: %d]: Block %p is smaller than the min_block_size %lu",
+                "[line: %d]: Block %p is smaller than the min_block_size %lu\n",
                 line, (void *)block, min_block_size);
             return false;
         }
         // Check coalescing: no consecutive free blocks in the heap
         if (!get_alloc(block) && !get_alloc(find_next(block))) {
-            dbg_printf("[line: %d]: Two consecutive free blocks: %p and %p",
+            dbg_printf("[line: %d]: Two consecutive free blocks: %p and %p\n",
                        line, (void *)block, (void *)find_next(block));
             return false;
         }
