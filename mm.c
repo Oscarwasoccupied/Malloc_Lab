@@ -469,7 +469,8 @@ static void free_list_insert(block_t *block) {
     dbg_requires(!get_alloc(block)); // check free
 
     // Find a suitable bucket list for this free block
-    size_t index = find_seg_list(get_size(block));
+    // size_t index = find_seg_list(get_size(block));
+    size_t index = 0;
 
     // When the bucket find is empty, initialize the bucket with current block
     if (bucket_list[index] == NULL) {
@@ -479,7 +480,7 @@ static void free_list_insert(block_t *block) {
         return;
     }
 
-    // When the bucket is no empty, insert the free block
+    // When the bucket is not empty, insert the free block
     block_t *tail = bucket_list[index]->prev;
     block->next = bucket_list[index];
     block->prev = tail;
@@ -494,32 +495,28 @@ static void free_list_insert(block_t *block) {
  * @brief delete a free block from its bucket list
  * @pre block is not NULL, block is free
  */
-static void free_list_delete(block_t* block) {
+static void free_list_delete(block_t *block) {
     dbg_requires(block != NULL);     // check NULL
     dbg_requires(!get_alloc(block)); // check free
 
     // Find this free block is in which bucket free list
-    size_t index = find_seg_list(get_size(block));
+    // size_t index = find_seg_list(get_size(block));
+    size_t index = 0;
 
     // This bucket free list cannot be an empty list
     dbg_assert(bucket_list[index] != NULL);
-    // When this bucket list only has this one block
-    if ((bucket_list[index]->next == block) && (bucket_list[index]->prev == block)) {
+    // When this bucket list only has one block
+    if ((block->next == block) && (block->prev == block)) {
         bucket_list[index] = NULL;
+        return;
     }
     // When this bucket list has many blocks
+    block->next->prev = block->prev;
+    block->prev->next = block->next;
     // and this block is the head block
-    else if (block == bucket_list[index]) {
-        block->next->prev = block->prev;
-        block->prev->next = block->next;
+    if (block == bucket_list[index]) {
         // set new head
-        bucket_list[index] = block;
-    }
-    // When this bucket list has many blocks
-    // and this block is not the head block
-    else {
-        block->next->prev = block->prev;
-        block->prev->next = block->next;
+        bucket_list[index] = block->next;
     }
 }
 
@@ -575,6 +572,7 @@ static block_t *coalesce_block(block_t *block) {
     /* Case 1: allocated + free + allocated */
     if (pre_alloc && next_alloc) {
         // nothing to coalsece, just return the current block
+        free_list_insert(block);
         return block;
     }
     /* Case 2: allocated + free + free */
@@ -582,26 +580,34 @@ static block_t *coalesce_block(block_t *block) {
         // To merge current free block with next free block
         // Change the header and footer (size) of current block
         cur_size = cur_size + get_size(next_block); // get the new size
+        free_list_delete(next_block);
         write_block(block, cur_size, false);
     }
     /* Case 3: free + free + allocated */
     else if ((!pre_alloc) && (next_alloc)) {
         // To merge the current free block with the pre free block
         cur_size = cur_size + get_size(pre_block); // get the new size
-        // Change the header and footer (size) of the previous block
-        write_block(pre_block, cur_size, false);
+        free_list_delete(pre_block);
         // Change the pointer to previous block
         block = pre_block;
+        // Change the header and footer (size) of the coalesed block
+        write_block(block, cur_size, false);
+
     }
     /* Case 4: free + free + free */
     else {
         // To merge the current free block with the pre and nextfree block
         cur_size = cur_size + get_size(pre_block) + get_size(next_block);
-        // Change the header and footer of the previous block
-        write_block(pre_block, cur_size, false);
+        free_list_delete(pre_block);
+        free_list_delete(next_block);
         // Change the pointer to the previous block
         block = pre_block;
+        // Change the header and footer of the coalesed block
+        write_block(block, cur_size, false);
     }
+
+    // insert the coalesced block into the seg list
+    free_list_insert(block);
 
     return block;
 }
@@ -661,8 +667,11 @@ static void split_block(block_t *block, size_t asize) {
         block_t *block_next;
         write_block(block, asize, true);
 
+        // after split, the rest is a free block
+        // need to be inset to a free list
         block_next = find_next(block);
         write_block(block_next, block_size - asize, false);
+        free_list_insert(block_next);
     }
 
     dbg_ensures(get_alloc(block));
@@ -682,13 +691,26 @@ static void split_block(block_t *block, size_t asize) {
 static block_t *find_fit(size_t asize) {
     block_t *block;
 
-    for (block = heap_start; get_size(block) > 0; block = find_next(block)) {
+    // first fit
+    // for (block = heap_start; get_size(block) > 0; block = find_next(block)) {
 
-        if (!(get_alloc(block)) && (asize <= get_size(block))) {
+    //     if (!(get_alloc(block)) && (asize <= get_size(block))) {
+    //         return block;
+    //     }
+    // }
+    // return NULL; // no fit found
+
+    // find which seg list this size of block belongs to
+    // size_t index = find_seg_list(asize);
+    size_t index = 0;
+    for (block = bucket_list[index]; block != bucket_list[index]->prev;
+         block = block->next) {
+        if ((asize <= get_size(block))) {
             return block;
         }
     }
-    return NULL; // no fit found
+
+    return NULL;
 }
 
 /**
@@ -782,6 +804,10 @@ bool mm_init(void) {
         return false;
     }
 
+    // initialize free bucket list
+    for (size_t i = 0; i < num_buckets; i++) {
+        bucket_list[i] = NULL;
+    }
     /*
      * TODO: delete or replace this comment once you've thought about it.
      * Think about why we need a heap prologue and epilogue. Why do
@@ -851,6 +877,9 @@ void *malloc(size_t size) {
 
     // The block should be marked as free
     dbg_assert(!get_alloc(block));
+
+    // delete the found free block from free list
+    free_list_delete(block);
 
     // Mark block as allocated
     size_t block_size = get_size(block);
